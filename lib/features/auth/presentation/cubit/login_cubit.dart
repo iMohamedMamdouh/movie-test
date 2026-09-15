@@ -7,35 +7,27 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'login_state.dart';
 
 class LoginCubit extends Cubit<LoginState> {
-  LoginCubit({FirebaseAuth? auth, FirebaseFirestore? firestore})
-      : _auth = auth ?? FirebaseAuth.instance,
-        _firestore = firestore ?? FirebaseFirestore.instance,
-        super(LoginInitial());
+  LoginCubit() : super(LoginInitial());
 
-  final FirebaseAuth _auth;
-  final FirebaseFirestore _firestore;
+  final auth = FirebaseAuth.instance;
+  final firestore = FirebaseFirestore.instance;
 
-  final GlobalKey<FormState> formKey = GlobalKey<FormState>();
-  final TextEditingController emailController = TextEditingController();
-  final TextEditingController passwordController = TextEditingController();
-
-  bool _googleInitialized = false;
+  final formKey = GlobalKey<FormState>();
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
 
   String? validateEmail(String? value) {
     if (value == null || value.trim().isEmpty) {
       return 'Please enter your email';
     }
-    if (!RegExp(r'^[\w.\-+]+@([\w\-]+\.)+[\w\-]{2,}$').hasMatch(value.trim())) {
+    if (!RegExp(r'^[\w.\-+]+@[\w\-]+\.[\w\-.]+$').hasMatch(value.trim())) {
       return 'Please enter a valid email';
     }
     return null;
   }
 
   String? validatePassword(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Please enter your password';
-    }
-    if (value.length < 6) {
+    if (value == null || value.length < 6) {
       return 'Password must be at least 6 characters';
     }
     return null;
@@ -46,71 +38,46 @@ class LoginCubit extends Cubit<LoginState> {
 
     emit(LoginLoading());
     try {
-      final UserCredential credential = await _auth.signInWithEmailAndPassword(
+      final result = await auth.signInWithEmailAndPassword(
         email: emailController.text.trim(),
         password: passwordController.text,
       );
-      final User? user = credential.user;
-      if (user == null) {
-        emit(LoginFailure('Login failed, please try again'));
-        return;
-      }
-      emit(LoginSuccess(user));
+      emit(LoginSuccess(result.user!));
     } on FirebaseAuthException catch (e) {
-      emit(LoginFailure(_authErrorMessage(e)));
+      emit(LoginFailure(errorMessage(e)));
     } catch (e) {
-      emit(LoginFailure('An unexpected error occurred: $e'));
+      emit(LoginFailure('Something went wrong, please try again'));
     }
   }
 
   Future<void> loginWithGoogle() async {
     emit(LoginLoading());
     try {
-      final GoogleSignIn googleSignIn = GoogleSignIn.instance;
-      if (!_googleInitialized) {
-        await googleSignIn.initialize();
-        _googleInitialized = true;
-      }
+      await GoogleSignIn.instance.initialize();
+      final account = await GoogleSignIn.instance.authenticate();
 
-      if (!googleSignIn.supportsAuthenticate()) {
-        emit(LoginFailure('Google sign in is not supported on this device'));
-        return;
-      }
-
-      final GoogleSignInAccount account = await googleSignIn.authenticate();
-      final String? idToken = account.authentication.idToken;
-      if (idToken == null) {
-        emit(LoginFailure('Could not read Google credentials, check the app configuration'));
-        return;
-      }
-
-      final OAuthCredential credential = GoogleAuthProvider.credential(
-        idToken: idToken,
+      final credential = GoogleAuthProvider.credential(
+        idToken: account.authentication.idToken,
       );
-      final UserCredential userCredential = await _auth.signInWithCredential(credential);
-      final User? user = userCredential.user;
-      if (user == null) {
-        emit(LoginFailure('Login failed, please try again'));
-        return;
-      }
+      final result = await auth.signInWithCredential(credential);
 
-      await _saveUserProfile(user, account);
-      emit(LoginSuccess(user));
+      await saveUser(result.user!, account);
+      emit(LoginSuccess(result.user!));
     } on GoogleSignInException catch (e) {
       if (e.code == GoogleSignInExceptionCode.canceled) {
         emit(LoginInitial());
-        return;
+      } else {
+        emit(LoginFailure('Google sign in failed'));
       }
-      emit(LoginFailure(e.description ?? 'Google sign in failed'));
     } on FirebaseAuthException catch (e) {
-      emit(LoginFailure(_authErrorMessage(e)));
+      emit(LoginFailure(errorMessage(e)));
     } catch (e) {
-      emit(LoginFailure('An unexpected error occurred: $e'));
+      emit(LoginFailure('Something went wrong, please try again'));
     }
   }
 
   Future<void> sendPasswordResetEmail() async {
-    final String email = emailController.text.trim();
+    final email = emailController.text.trim();
     if (validateEmail(email) != null) {
       emit(LoginFailure('Please enter a valid email first'));
       return;
@@ -118,34 +85,29 @@ class LoginCubit extends Cubit<LoginState> {
 
     emit(LoginLoading());
     try {
-      await _auth.sendPasswordResetEmail(email: email);
+      await auth.sendPasswordResetEmail(email: email);
       emit(PasswordResetEmailSent(email));
     } on FirebaseAuthException catch (e) {
-      emit(LoginFailure(_authErrorMessage(e)));
-    } catch (e) {
-      emit(LoginFailure('An unexpected error occurred: $e'));
+      emit(LoginFailure(errorMessage(e)));
     }
   }
 
-  Future<void> _saveUserProfile(User user, GoogleSignInAccount account) async {
-    final DocumentReference<Map<String, dynamic>> userRef =
-        _firestore.collection('users').doc(user.uid);
-    final DocumentSnapshot<Map<String, dynamic>> snapshot = await userRef.get();
+  Future<void> saveUser(User user, GoogleSignInAccount account) async {
+    final doc = firestore.collection('users').doc(user.uid);
+    if ((await doc.get()).exists) return;
 
-    if (snapshot.exists) return;
-
-    await userRef.set({
+    await doc.set({
       'uid': user.uid,
-      'name': account.displayName ?? user.displayName ?? '',
+      'name': account.displayName ?? '',
       'email': account.email,
-      'phone': user.phoneNumber ?? '',
+      'phone': '',
       'avatarIndex': 1,
       'createdAt': FieldValue.serverTimestamp(),
     });
   }
 
-  String _authErrorMessage(FirebaseAuthException exception) {
-    switch (exception.code) {
+  String errorMessage(FirebaseAuthException e) {
+    switch (e.code) {
       case 'invalid-email':
         return 'This email address is not valid';
       case 'user-disabled':
@@ -159,11 +121,9 @@ class LoginCubit extends Cubit<LoginState> {
       case 'network-request-failed':
         return 'Network error, please check your connection';
       case 'operation-not-allowed':
-        return 'This sign in method is disabled for this project';
-      case 'account-exists-with-different-credential':
-        return 'An account already exists with the same email';
+        return 'This sign in method is disabled';
       default:
-        return exception.message ?? 'Authentication failed';
+        return 'Authentication failed';
     }
   }
 
