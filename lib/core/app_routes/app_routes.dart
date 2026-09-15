@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../features/auth/presentation/cubit/login_cubit.dart';
 import '../../features/auth/presentation/cubit/register_cubit.dart';
 import '../../features/auth/presentation/views/forget_password_screen.dart';
 import '../../features/auth/presentation/views/login_screen.dart';
@@ -31,8 +32,12 @@ class AppRoutes {
   static Route onboarding6() =>
       MaterialPageRoute(builder: (_) => const Onboarding6Screen());
 
-  static Route login() =>
-      MaterialPageRoute(builder: (_) => const LoginScreen());
+  static Route login() => MaterialPageRoute(
+    builder: (_) => BlocProvider(
+      create: (context) => LoginCubit(),
+      child: const LoginScreen(),
+    ),
+  );
 
   static Route register() => MaterialPageRoute(
     builder: (_) => BlocProvider(

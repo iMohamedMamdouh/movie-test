@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+
 import '../../../../core/app_routes/app_routes.dart';
 import '../../../../core/utils/app_assets.dart';
 import '../../../../core/utils/app_colors.dart';
 import '../../../profile/presentation/widgets/custom_button.dart';
 import '../../../profile/presentation/widgets/custom_text_field.dart';
 import '../../../profile/presentation/widgets/language_toggle.dart';
+import '../cubit/login_cubit.dart';
+import '../cubit/login_state.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -14,23 +18,28 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-
   bool _isPasswordHidden = true;
 
-  String? _validatePassword(String? value) {
-    if (value == null || value.isEmpty) return 'Please enter your password';
-    if (value.length < 6) return 'Password must be at least 6 characters';
-    return null;
+  void _handleState(BuildContext context, LoginState state) {
+    if (state is LoginSuccess) {
+      Navigator.pushReplacement(context, AppRoutes.updateProfile());
+    } else if (state is PasswordResetEmailSent) {
+      _showMessage(
+        context,
+        'A reset link has been sent to ${state.email}',
+        AppColors.primary,
+      );
+    } else if (state is LoginFailure) {
+      _showMessage(context, state.errorMessage, AppColors.red);
+    }
   }
 
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
+  void _showMessage(BuildContext context, String message, Color color) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: color),
+      );
   }
 
   @override
@@ -38,133 +47,150 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 50),
-                Center(
-                  child: Image.asset(
-                    AppAssets.appLogo,
-                    height: 118,
-                    fit: BoxFit.contain,
-                  ),
-                ),
-                const SizedBox(height: 70),
+        child: BlocConsumer<LoginCubit, LoginState>(
+          listener: _handleState,
+          builder: (context, state) {
+            final LoginCubit cubit = context.read<LoginCubit>();
+            final bool isLoading = state is LoginLoading;
 
-                CustomTextField(
-                  controller: _emailController,
-                  hintText: 'Email',
-                  prefixIcon: Icons.email,
-                  keyboardType: TextInputType.emailAddress,
-                  textInputAction: TextInputAction.next,
-                ),
-                const SizedBox(height: 22),
-
-                // ───── Password ─────
-                CustomTextField(
-                  hintText: 'Password',
-                  prefixIcon: Icons.lock,
-                  obscureText: _isPasswordHidden,
-                  textInputAction: TextInputAction.done,
-                  validator: _validatePassword,
-                  suffixIcon: IconButton(
-                    onPressed: () =>
-                        setState(() => _isPasswordHidden = !_isPasswordHidden),
-                    icon: Icon(
-                      _isPasswordHidden
-                          ? Icons.visibility_off
-                          : Icons.visibility,
-                      color: AppColors.white,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Align(
-                  alignment: AlignmentDirectional.centerEnd,
-                  child: GestureDetector(
-                    onTap: () {
-                      Navigator.push(context, AppRoutes.forgetPassword());
-                    },
-                    child: const Text(
-                      'Forget Password ?',
-                      style: TextStyle(
-                        color: AppColors.primary,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w400,
+            return SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Form(
+                key: cubit.formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 50),
+                    Center(
+                      child: Image.asset(
+                        AppAssets.appLogo,
+                        height: 118,
+                        fit: BoxFit.contain,
                       ),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 32),
+                    const SizedBox(height: 70),
 
-                CustomButton(
-                  text: 'Login',
-                  onPressed: () {
-                    if (_formKey.currentState!.validate()) {
-                       Navigator.push(context, AppRoutes.updateProfile());
-                    }
-                  },
-                ),
-                const SizedBox(height: 22),
-
-                // ───── Don't Have Account ? Create One ─────
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text(
-                      "Don't Have Account ? ",
-                      style: TextStyle(color: AppColors.white, fontSize: 14),
+                    CustomTextField(
+                      controller: cubit.emailController,
+                      hintText: 'Email',
+                      prefixIcon: Icons.email,
+                      keyboardType: TextInputType.emailAddress,
+                      textInputAction: TextInputAction.next,
+                      validator: cubit.validateEmail,
                     ),
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.push(context, AppRoutes.register());
-                      },
-                      child: const Text(
-                        'Create One',
-                        style: TextStyle(
-                          color: AppColors.primary,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w900,
+                    const SizedBox(height: 22),
+
+                    CustomTextField(
+                      controller: cubit.passwordController,
+                      hintText: 'Password',
+                      prefixIcon: Icons.lock,
+                      obscureText: _isPasswordHidden,
+                      textInputAction: TextInputAction.done,
+                      validator: cubit.validatePassword,
+                      suffixIcon: IconButton(
+                        onPressed: () => setState(
+                          () => _isPasswordHidden = !_isPasswordHidden,
+                        ),
+                        icon: Icon(
+                          _isPasswordHidden
+                              ? Icons.visibility_off
+                              : Icons.visibility,
+                          color: AppColors.white,
                         ),
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 22),
+                    const SizedBox(height: 16),
 
-                Row(
-                  children: [
-                    const Expanded(child: Divider(color: AppColors.primaryYellow)),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: const Text('OR', style: TextStyle(color: AppColors.primaryYellow)),
+                    Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: GestureDetector(
+                        onTap: isLoading ? null : cubit.sendPasswordResetEmail,
+                        child: const Text(
+                          'Forget Password ?',
+                          style: TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ),
                     ),
-                    const Expanded(child: Divider(color: AppColors.primaryYellow)),
+                    const SizedBox(height: 32),
+
+                    if (isLoading)
+                      const Center(
+                        child: CircularProgressIndicator(
+                          color: AppColors.primaryYellow,
+                        ),
+                      )
+                    else
+                      CustomButton(
+                        text: 'Login',
+                        onPressed: cubit.loginWithEmail,
+                      ),
+                    const SizedBox(height: 22),
+
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text(
+                          "Don't Have Account ? ",
+                          style: TextStyle(color: AppColors.white, fontSize: 14),
+                        ),
+                        GestureDetector(
+                          onTap: isLoading
+                              ? null
+                              : () => Navigator.push(
+                                    context,
+                                    AppRoutes.register(),
+                                  ),
+                          child: const Text(
+                            'Create One',
+                            style: TextStyle(
+                              color: AppColors.primary,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 22),
+
+                    Row(
+                      children: const [
+                        Expanded(child: Divider(color: AppColors.primaryYellow)),
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16),
+                          child: Text(
+                            'OR',
+                            style: TextStyle(color: AppColors.primaryYellow),
+                          ),
+                        ),
+                        Expanded(child: Divider(color: AppColors.primaryYellow)),
+                      ],
+                    ),
+                    const SizedBox(height: 28),
+
+                    CustomButton(
+                      text: 'Login With Google',
+                      onPressed: isLoading ? () {} : cubit.loginWithGoogle,
+                      iconPath: AppAssets.google,
+                    ),
+                    const SizedBox(height: 32),
+
+                    Center(
+                      child: LanguageToggleButton(
+                        leftFlagPath: AppAssets.flagLeft,
+                        rightFlagPath: AppAssets.flagRight,
+                      ),
+                    ),
+                    const SizedBox(height: 30),
                   ],
                 ),
-
-                const SizedBox(height: 28),
-                CustomButton(
-                  text: 'Login With Google',
-                  onPressed: () {},
-                  iconPath: AppAssets.google,
-                ),
-                const SizedBox(height: 32),
-
-                Center(
-                  child: LanguageToggleButton(
-                    leftFlagPath: AppAssets.flagLeft,
-                    rightFlagPath: AppAssets.flagRight,
-                  ),
-                ),
-                const SizedBox(height: 30),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ),
     );
