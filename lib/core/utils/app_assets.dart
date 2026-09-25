@@ -23,6 +23,10 @@ class AppAssets {
   static const String movieCaptainAmerica2 =
       'assets/home_tab_images/captain_america_2_movie.png';
   static const String moviewar = 'assets/home_tab_images/war_movie.png';
+  static const String movieBlackWidow =
+      'assets/home_tab_images/black_wedow_movie.png';
+  static const String movieCivilWar =
+      'assets/home_tab_images/captain_amireca_movie.png';
   static const String background = 'assets/home_tab_images/background.png';
   static const String availableNow = 'assets/home_tab_images/available_now.png';
   static const String watchNow = 'assets/home_tab_images/watch_now.png';
